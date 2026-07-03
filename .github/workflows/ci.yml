@@ -21,7 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15]
+        # macos-14 matches the release workflow's wheel-build runner.
+        os: [ubuntu-latest, windows-latest, macos-14]
         # Oldest supported (3.9), current stable (3.13), and newest (3.14).
         python-version: ['3.9', '3.13', '3.14']
     runs-on: ${{ matrix.os }}

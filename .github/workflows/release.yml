@@ -43,9 +43,10 @@ jobs:
         uses: pypa/cibuildwheel@v4.1.0
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
-          # No 32-bit, no musllinux, no PyPy — narrows the native build matrix
-          # to the interpreters CI already covers.
-          CIBW_SKIP: "*_i686 *-win32 *-musllinux_* pp*"
+          # No 32-bit, no musllinux — narrows the native build matrix to the
+          # interpreters CI already covers. (PyPy isn't built by default in
+          # cibuildwheel v4, so no pp* selector is needed.)
+          CIBW_SKIP: "*_i686 *-win32 *-musllinux_*"
           # Build both Apple Silicon and Intel wheels from the arm64 runner.
           CIBW_ARCHS_MACOS: "arm64 x86_64"
           # Import the compiled extension in a clean env to prove the wheel is
