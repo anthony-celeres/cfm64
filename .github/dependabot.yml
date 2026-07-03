@@ -8,5 +8,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Bundle all Action bumps into ONE reviewable PR instead of one per action.
+    groups:
+      github-actions:
+        patterns: ["*"]
     commit-message:
       prefix: ci
