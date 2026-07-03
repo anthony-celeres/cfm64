@@ -136,20 +136,6 @@ Input index X
 
 ---
 
-## When CFM64 Helps Most
-
-> _Projected impact by scenario; only text + NVMe is evaluated so far (see [Scope & Status](#scope--status))._
-
-| Scenario | Impact |
-|---|---|
-| GPU + HDD storage | ⭐⭐⭐⭐⭐ Massive speedup |
-| GPU + Network (S3, NFS) | ⭐⭐⭐⭐⭐ Massive speedup |
-| Memory-constrained (>100M samples) | ⭐⭐⭐⭐⭐ Essential |
-| Distributed training | ⭐⭐⭐⭐ Stateless checkpointing |
-| GPU + NVMe SSD | ⭐⭐ Moderate benefit |
-
----
-
 ## Citation
 
 ```bibtex
