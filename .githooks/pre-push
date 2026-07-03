@@ -1,0 +1,46 @@
+#!/bin/sh
+# CFM64 local guardrail — mirrors the GitHub branch-protection rules so
+# violations are caught *before* they leave your machine.
+#
+# Enforces:
+#   1. No direct pushes to `main` (use a feature branch + PR).
+#   2. No AI co-author trailers (Co-Authored-By: Claude/Anthropic).
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+#
+# Emergency bypass (avoid): git push --no-verify
+
+protected="main"
+z40="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	# 1. Block direct pushes to the protected branch.
+	case "$remote_ref" in
+		refs/heads/"$protected")
+			echo "✖ Direct pushes to '$protected' are blocked." >&2
+			echo "  Push a feature branch and open a PR instead:" >&2
+			echo "    git switch -c fix/my-change && git push -u origin fix/my-change" >&2
+			exit 1
+			;;
+	esac
+
+	# Determine the range of commits being pushed.
+	if [ "$local_sha" = "$z40" ]; then
+		continue  # branch deletion — nothing to inspect
+	fi
+	if [ "$remote_sha" = "$z40" ]; then
+		range="$local_sha"          # new branch — inspect all its commits
+	else
+		range="$remote_sha..$local_sha"
+	fi
+
+	# 2. Reject any commit carrying an AI co-author trailer.
+	if git log "$range" --format='%B' 2>/dev/null | grep -qiE 'Co-Authored-By:[[:space:]]*(Claude|Anthropic)'; then
+		echo "✖ A commit contains a Claude/Anthropic co-author trailer." >&2
+		echo "  Remove it (git commit --amend / rebase) before pushing." >&2
+		exit 1
+	fi
+done
+
+exit 0
