@@ -27,7 +27,7 @@ Quick Start
     ...         train(batch)
 """
 
-__version__ = "0.2.0"
+__version__ = "0.1.0"
 
 # Constants ----------------------------------------------------------------
 from cfm64.constants import BLOCK_SIZE_BYTES
