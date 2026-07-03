@@ -39,9 +39,8 @@ dependencies = [
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.0"]
 torch = ["torch>=1.9"]
-image = ["Pillow>=8.0"]
 parquet = ["pyarrow>=6.0"]
-all = ["h5py>=3.0", "torch>=1.9", "Pillow>=8.0", "pyarrow>=6.0"]
+all = ["h5py>=3.0", "torch>=1.9", "pyarrow>=6.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
