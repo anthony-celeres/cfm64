@@ -33,8 +33,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-13 = x86_64, macos-14 = arm64 (each builds its native arch).
-        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+        # macos-14 is arm64 and cross-builds x86_64 too (the macos-13 Intel
+        # runner was retired by GitHub, so we no longer use a native x86_64 mac).
+        os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -45,9 +46,13 @@ jobs:
           # No 32-bit, no musllinux, no PyPy — narrows the native build matrix
           # to the interpreters CI already covers.
           CIBW_SKIP: "*_i686 *-win32 *-musllinux_* pp*"
-          CIBW_ARCHS_MACOS: auto
+          # Build both Apple Silicon and Intel wheels from the arm64 runner.
+          CIBW_ARCHS_MACOS: "arm64 x86_64"
           # Import the compiled extension in a clean env to prove the wheel is
-          # well-formed on the target platform (no torch needed for `import cfm64`).
+          # well-formed (no torch needed for `import cfm64`). The x86_64 mac
+          # wheels are cross-built and can't run on the arm64 runner, so skip
+          # only their test — they're still built and shipped.
+          CIBW_TEST_SKIP: "*-macosx_x86_64"
           CIBW_TEST_COMMAND: >-
             python -c "import cfm64; from cfm64 import CFM64Shuffle, FeistelPermutation; print('cfm64', cfm64.__version__, 'OK')"
       - uses: actions/upload-artifact@v7
