@@ -4,17 +4,20 @@ name: Release
 # OS/Python, plus an sdist, then publishes via PyPI Trusted Publishing (OIDC) —
 # no API tokens stored.
 #
-# Flow (matches the "TestPyPI first, then PyPI" policy):
-#   * Cut a GitHub Release marked "pre-release"  -> uploads to TestPyPI.
-#   * Cut a normal (full) GitHub Release          -> uploads to PyPI.
-#   * Trigger manually (workflow_dispatch)        -> builds wheels + sdist only
-#                                                    (a full cross-OS dry run),
-#                                                    publishes nothing.
+# Flow:
+#   * Publish a GitHub Release  -> builds wheels + sdist and uploads to PyPI.
+#   * Trigger manually (workflow_dispatch) -> builds wheels + sdist only
+#     (a full cross-OS dry run), publishes nothing.
 #
-# One-time setup on each index (pypi.org and test.pypi.org):
+# Releases are cut from `main`, which is protected by ci.yml (test + lint on
+# every PR), so the released commit has already passed CI — no gate is repeated
+# here. Each wheel is still import-tested by cibuildwheel (CIBW_TEST_COMMAND),
+# and `twine check` validates the sdist metadata.
+#
+# One-time setup on pypi.org:
 #   Add a "pending" Trusted Publisher pointing at
 #     owner: anthony-celeres   repo: cfm64   workflow: release.yml
-#     environment: pypi   (and testpypi)
+#     environment: pypi
 #   See https://docs.pypi.org/trusted-publishers/
 
 on:
@@ -25,49 +28,8 @@ on:
 permissions: {}
 
 jobs:
-  # --- Release gate: the exact test + lint that ci.yml runs (source build +
-  # full suite across all 3 OSes x 3 Pythons). Wheel/sdist builds — and thus
-  # every publish job — are unreachable unless BOTH pass on the released commit,
-  # so a red build can never reach PyPI. Kept in sync with ci.yml by hand.
-  test:
-    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-15]
-        python-version: ['3.9', '3.13', '3.14']
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
-      - run: python -m pip install --upgrade pip
-      - name: Install PyTorch (CPU)
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
-        continue-on-error: ${{ matrix.python-version == '3.14' }}
-      - name: Build & install cfm64 (native extension)
-        run: pip install ".[dev]"
-      - name: Smoke test — native extension imports
-        run: python -c "import cfm64; from cfm64 import CFM64Shuffle, FeistelPermutation; print('cfm64', cfm64.__version__, 'OK')"
-      - name: Run test suite
-        run: pytest
-
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-      - run: pip install ruff
-      - run: ruff check src tests
-
   build-wheels:
     name: Wheels (${{ matrix.os }})
-    needs: [test, lint]  # gate: no green tests+lint, no wheels, no publish
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +57,6 @@ jobs:
 
   build-sdist:
     name: sdist
-    needs: [test, lint]  # gate: same as build-wheels
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -112,29 +73,10 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
-  publish-testpypi:
-    name: Publish to TestPyPI
-    needs: [build-wheels, build-sdist]
-    if: github.event_name == 'release' && github.event.release.prerelease
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/project/cfm64/
-    permissions:
-      id-token: write  # required for Trusted Publishing (OIDC)
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: dist
-          merge-multiple: true  # collect every wheels-* artifact + sdist into dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   publish-pypi:
     name: Publish to PyPI
     needs: [build-wheels, build-sdist]
-    if: github.event_name == 'release' && !github.event.release.prerelease
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -145,5 +87,5 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
-          merge-multiple: true
+          merge-multiple: true  # collect every wheels-* artifact + sdist into dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
