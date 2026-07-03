@@ -98,8 +98,6 @@ bs = auto_fio.optimal_block_size("/data/train")          # bytes, measured once
 dataset = TextBlockDataset("/data/train.csv", block_size_bytes=bs)
 ```
 
-Both `TextBlockDataset` and `ImageBlockDataset` accept `block_size_bytes`.
-
 ---
 
 ## Scope & Status
@@ -109,8 +107,9 @@ Experimental results (throughput, accuracy, memory) are produced separately and
 are **not** included in this repository.
 
 **What CFM64 targets:** text data loading on a single machine with NVMe/SSD
-storage. Image, network (S3/NFS), distributed, and billion-scale scenarios are
-design goals, not part of the current evaluation.
+storage — the only modality this version ships (`TextBlockDataset`). Image,
+network (S3/NFS), distributed, and billion-scale scenarios are design goals
+reserved for future versions, not part of the current release or evaluation.
 
 **Shuffle scope.** CFM64 performs *block-level* shuffling: Level-1 randomises
 block visit order and Level-2 shuffles within each ~7 MB block. Most batches

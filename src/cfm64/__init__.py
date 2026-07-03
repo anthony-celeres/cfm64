@@ -35,7 +35,6 @@ from cfm64.constants import BLOCK_SIZE_BYTES
 # Dataset adapters ---------------------------------------------------------
 from cfm64.datasets import (
     BlockDataset,
-    ImageBlockDataset,
     TextBlockDataset,
 )
 
@@ -55,7 +54,6 @@ __all__ = [
     # Datasets
     "BlockDataset",
     "TextBlockDataset",
-    "ImageBlockDataset",
     # I/O
     "CFM64Loader",
 ]

@@ -1,11 +1,11 @@
-"""Tests for cfm64.datasets — BlockDataset, TextBlockDataset, ImageBlockDataset."""
+"""Tests for cfm64.datasets — BlockDataset, TextBlockDataset."""
 
 import os
 
 import pytest
 
 from cfm64.constants import BLOCK_SIZE_BYTES
-from cfm64.datasets import BlockDataset, ImageBlockDataset, TextBlockDataset
+from cfm64.datasets import BlockDataset, TextBlockDataset
 
 # ---------------------------------------------------------------------------
 # BlockDataset ABC
@@ -202,128 +202,6 @@ class TestTextBlockDataset:
 
 
 # ---------------------------------------------------------------------------
-# ImageBlockDataset
-# ---------------------------------------------------------------------------
-
-
-class TestImageBlockDataset:
-    """Tests for image-folder block dataset."""
-
-    @staticmethod
-    def _make_image_tree(root, shards: dict[str, int]):
-        """Create ``root/<shard>/img_<i>.jpg`` for each shard."""
-        PILImage = pytest.importorskip("PIL.Image")
-        for shard_name, count in shards.items():
-            shard_dir = root / shard_name
-            shard_dir.mkdir(parents=True, exist_ok=True)
-            for i in range(count):
-                img = PILImage.new("RGB", (10, 10))
-                img.save(shard_dir / f"img_{i:04d}.jpg")
-
-    def test_len_matches_total_images(self, tmp_path):
-        self._make_image_tree(tmp_path, {"000": 10, "001": 5})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        assert len(ds) == 15
-
-    def test_dataset_memory_size(self, tmp_path):
-        self._make_image_tree(tmp_path, {"000": 10})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        assert ds.dataset_memory_size > 0
-
-    def test_small_images_single_block(self, tmp_path):
-        """Tiny images (< 7MB total) should fit in a single block."""
-        self._make_image_tree(tmp_path, {"000": 10})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        # 10 tiny 10x10 JPEGs ≈ a few KB total — way under 7MB
-        assert ds.num_blocks == 1
-
-    def test_load_block_returns_image_label_tuples(self, tmp_path):
-        self._make_image_tree(tmp_path, {"class0": 6})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        block = ds.load_block(0)
-        assert len(block) == 6  # all in one block
-        img, lbl = block[0]
-        assert img.size == (10, 10)
-        assert lbl is None  # no label_fn
-
-    def test_get_item_returns_image(self, tmp_path):
-        self._make_image_tree(tmp_path, {"class0": 4})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        block = ds.load_block(0)
-        img, lbl = ds.get_item(block, 0)
-        assert img.size == (10, 10)
-
-    def test_transform_applied(self, tmp_path):
-        self._make_image_tree(tmp_path, {"class0": 4})
-        ds = ImageBlockDataset(
-            str(tmp_path),
-            extensions=[".jpg"],
-            transform=lambda img: img.resize((32, 32)),
-        )
-        block = ds.load_block(0)
-        img, _ = ds.get_item(block, 0)
-        assert img.size == (32, 32)
-
-    def test_label_fn(self, tmp_path):
-        self._make_image_tree(tmp_path, {"cat": 3, "dog": 3})
-
-        def _label(filepath: str) -> int:
-            return 0 if "cat" in filepath else 1
-
-        ds = ImageBlockDataset(
-            str(tmp_path), extensions=[".jpg"], label_fn=_label
-        )
-        assert len(ds.labels) == 6
-        assert set(ds.labels) == {0, 1}
-
-    def test_extensions_filter(self, tmp_path):
-        """Only files matching *extensions* are included."""
-        PILImage = pytest.importorskip("PIL.Image")
-        shard = tmp_path / "shard0"
-        shard.mkdir()
-        PILImage.new("RGB", (10, 10)).save(shard / "a.jpg")
-        PILImage.new("RGB", (10, 10)).save(shard / "b.png")
-        with open(shard / "c.txt", "w") as f:
-            f.write("not an image")
-
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        assert len(ds) == 1
-
-    def test_empty_directory(self, tmp_path):
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        ds = ImageBlockDataset(str(empty), extensions=[".jpg"])
-        assert len(ds) == 0
-        assert ds.num_blocks == 0
-
-    def test_default_extensions(self, tmp_path):
-        """Default extensions cover .jpg, .jpeg, .png, .webp."""
-        PILImage = pytest.importorskip("PIL.Image")
-        shard = tmp_path / "shard"
-        shard.mkdir()
-        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-            PILImage.new("RGB", (4, 4)).save(shard / f"img{ext}")
-
-        ds = ImageBlockDataset(str(tmp_path))
-        assert len(ds) == 4
-
-    def test_bijection(self, tmp_path):
-        """All images accessed exactly once via load_block + get_item."""
-        self._make_image_tree(tmp_path, {"s0": 7, "s1": 5})
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-
-        count = 0
-        for bid in range(ds.num_blocks):
-            block = ds.load_block(bid)
-            for off in range(len(block)):
-                ds.get_item(block, off)
-                count += 1
-        # Every file accessed exactly once
-        assert count == len(ds)
-        assert len(set(ds.files)) == len(ds)  # no duplicate paths
-
-
-# ---------------------------------------------------------------------------
 # Configurable block size (auto-fio integration)
 # ---------------------------------------------------------------------------
 
@@ -337,24 +215,12 @@ class TestConfigurableBlockSize:
             for i in range(n):
                 f.write(f"line_{i}\n")
 
-    @staticmethod
-    def _make_images(root, count: int) -> None:
-        PILImage = pytest.importorskip("PIL.Image")
-        root.mkdir(parents=True, exist_ok=True)
-        for i in range(count):
-            PILImage.new("RGB", (10, 10)).save(root / f"img_{i:04d}.jpg")
-
     # -- defaults -----------------------------------------------------------
 
     def test_text_defaults_to_package_constant(self, tmp_path):
         path = str(tmp_path / "data.txt")
         self._write_lines(path, 20)
         ds = TextBlockDataset(path)
-        assert ds.block_size_bytes == BLOCK_SIZE_BYTES
-
-    def test_image_defaults_to_package_constant(self, tmp_path):
-        self._make_images(tmp_path / "s", 5)
-        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
         assert ds.block_size_bytes == BLOCK_SIZE_BYTES
 
     # -- custom value changes blocking --------------------------------------
@@ -381,16 +247,6 @@ class TestConfigurableBlockSize:
                 seen.append(ds.get_item(block, off))
         assert len(seen) == len(ds) == 37  # every line exactly once, in order
         assert seen == [f"line_{i}\n".encode() for i in range(37)]
-
-    def test_image_custom_block_size_is_stored_and_used(self, tmp_path):
-        self._make_images(tmp_path / "s", 6)
-        default_ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
-        small_ds = ImageBlockDataset(
-            str(tmp_path), extensions=[".jpg"], block_size_bytes=1
-        )
-        assert small_ds.block_size_bytes == 1
-        assert default_ds.num_blocks == 1
-        assert small_ds.num_blocks == len(small_ds) == 6
 
     # -- validation ---------------------------------------------------------
 
