@@ -1,0 +1,107 @@
+name: Release
+
+# Builds the pybind11 native extension into binary wheels for every supported
+# OS/Python, plus an sdist, then publishes via PyPI Trusted Publishing (OIDC) —
+# no API tokens stored.
+#
+# Flow (matches the "TestPyPI first, then PyPI" policy):
+#   * Cut a GitHub Release marked "pre-release"  -> uploads to TestPyPI.
+#   * Cut a normal (full) GitHub Release          -> uploads to PyPI.
+#   * Trigger manually (workflow_dispatch)        -> builds wheels + sdist only
+#                                                    (a full cross-OS dry run),
+#                                                    publishes nothing.
+#
+# One-time setup on each index (pypi.org and test.pypi.org):
+#   Add a "pending" Trusted Publisher pointing at
+#     owner: anthony-celeres   repo: cfm64   workflow: release.yml
+#     environment: pypi   (and testpypi)
+#   See https://docs.pypi.org/trusted-publishers/
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  build-wheels:
+    name: Wheels (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-13 = x86_64, macos-14 = arm64 (each builds its native arch).
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v4.1.0
+        env:
+          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+          # No 32-bit, no musllinux, no PyPy — narrows the native build matrix
+          # to the interpreters CI already covers.
+          CIBW_SKIP: "*_i686 *-win32 *-musllinux_* pp*"
+          CIBW_ARCHS_MACOS: auto
+          # Import the compiled extension in a clean env to prove the wheel is
+          # well-formed on the target platform (no torch needed for `import cfm64`).
+          CIBW_TEST_COMMAND: >-
+            python -c "import cfm64; from cfm64 import CFM64Shuffle, FeistelPermutation; print('cfm64', cfm64.__version__, 'OK')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  build-sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build --sdist
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build-wheels, build-sdist]
+    if: github.event_name == 'release' && github.event.release.prerelease
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/cfm64/
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true  # collect every wheels-* artifact + sdist into dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cfm64/
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
