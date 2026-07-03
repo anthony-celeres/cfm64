@@ -1,9 +1,10 @@
 """
 CFM64 Datasets — Block-aware dataset adapters for raw data.
 
-Blocks are defined by **byte size** (7 MB), not item count.  Each block
-contains a variable number of items whose combined on-disk size is at
-most ``BLOCK_SIZE_BYTES``.
+Blocks are defined by **byte size**, not item count.  Each block contains a
+variable number of items whose combined on-disk size is at most
+``block_size_bytes`` (defaults to ``BLOCK_SIZE_BYTES``; pass the value
+``auto-fio`` reports for your storage device to tune blocks to the hardware).
 
 Supported modalities:
 - **TextBlockDataset** — Raw text/CSV files via O(1) byte-offset seeking.
@@ -24,6 +25,22 @@ from cfm64.constants import BLOCK_SIZE_BYTES
 logger = logging.getLogger(__name__)
 
 
+def _validate_block_size(block_size_bytes: int) -> int:
+    """Validate a block-size argument and return it.
+
+    The block size is the byte budget each block is packed up to — the unit of
+    both transfer and shuffle. It should be the value ``auto-fio`` reports for
+    the target storage device (run once per machine, then pass it in).
+    """
+    if not isinstance(block_size_bytes, int) or isinstance(block_size_bytes, bool):
+        raise TypeError(
+            f"block_size_bytes must be an int, got {type(block_size_bytes).__name__}"
+        )
+    if block_size_bytes <= 0:
+        raise ValueError(f"block_size_bytes must be positive, got {block_size_bytes}")
+    return block_size_bytes
+
+
 # ---------------------------------------------------------------------------
 # Abstract Base
 # ---------------------------------------------------------------------------
@@ -31,11 +48,18 @@ logger = logging.getLogger(__name__)
 class BlockDataset(ABC):
     """Abstract base class for byte-block-aware datasets.
 
-    Blocks are sized by **bytes** (``BLOCK_SIZE_BYTES``), so each block
+    Blocks are sized by **bytes** (``block_size_bytes``), so each block
     may contain a different number of items.  Subclasses must implement
     ``__len__``, ``dataset_memory_size``, ``num_blocks``, ``load_block``,
-    and ``get_item``.
+    and ``get_item``, and set ``self._block_size_bytes``.
     """
+
+    _block_size_bytes: int = BLOCK_SIZE_BYTES
+
+    @property
+    def block_size_bytes(self) -> int:
+        """Byte budget each block is packed up to (transfer + shuffle unit)."""
+        return self._block_size_bytes
 
     @abstractmethod
     def __len__(self) -> int:
@@ -89,6 +113,10 @@ class TextBlockDataset(BlockDataset):
         Applied to each raw line (``bytes``) when ``get_item`` is called.
     has_header : bool
         If ``True``, the first line is skipped.
+    block_size_bytes : int, optional
+        Byte budget per block (transfer + shuffle unit). Defaults to the
+        package constant ``BLOCK_SIZE_BYTES``. Pass the value ``auto-fio``
+        reports for your storage device to tune blocks to the hardware.
     """
 
     def __init__(
@@ -96,9 +124,11 @@ class TextBlockDataset(BlockDataset):
         path: str,
         transform: Callable | None = None,
         has_header: bool = False,
+        block_size_bytes: int = BLOCK_SIZE_BYTES,
     ) -> None:
         self.path = path
         self.transform = transform
+        self._block_size_bytes = _validate_block_size(block_size_bytes)
 
         self.offsets: list[int] = []
         idx_path = path + ".idx.txt"
@@ -163,7 +193,7 @@ class TextBlockDataset(BlockDataset):
         start = 0
 
         while start < len(self.offsets):
-            target_byte = self.offsets[start] + BLOCK_SIZE_BYTES
+            target_byte = self.offsets[start] + self._block_size_bytes
             end = bisect.bisect_left(self.offsets, target_byte, start)
             if end <= start:
                 end = start + 1  # at least one line per block
@@ -246,6 +276,10 @@ class ImageBlockDataset(BlockDataset):
         Applied to each PIL image in ``get_item``.
     label_fn : callable, optional
         Maps file path → integer label.
+    block_size_bytes : int, optional
+        Byte budget per block (transfer + shuffle unit). Defaults to the
+        package constant ``BLOCK_SIZE_BYTES``. Pass the value ``auto-fio``
+        reports for your storage device to tune blocks to the hardware.
     """
 
     def __init__(
@@ -254,6 +288,7 @@ class ImageBlockDataset(BlockDataset):
         extensions: list[str] | None = None,
         transform: Callable | None = None,
         label_fn: Callable[[str], int] | None = None,
+        block_size_bytes: int = BLOCK_SIZE_BYTES,
     ) -> None:
         if extensions is None:
             extensions = [".jpg", ".jpeg", ".png", ".webp"]
@@ -261,6 +296,7 @@ class ImageBlockDataset(BlockDataset):
         self.extensions = [e.lower() for e in extensions]
         self.transform = transform
         self.label_fn = label_fn
+        self._block_size_bytes = _validate_block_size(block_size_bytes)
 
         self.files: list[str] = []
         self.labels: list[int] = []
@@ -297,7 +333,7 @@ class ImageBlockDataset(BlockDataset):
 
         for i, size in enumerate(self._file_sizes):
             current_bytes += size
-            if current_bytes >= BLOCK_SIZE_BYTES:
+            if current_bytes >= self._block_size_bytes:
                 ranges.append((start, i + 1))
                 start = i + 1
                 current_bytes = 0

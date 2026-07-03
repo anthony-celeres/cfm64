@@ -71,9 +71,9 @@ for epoch in range(100):
 ### Full I/O-Optimised Loader
 
 ```python
-from cfm64 import CFM64Loader, BlockDataset
+from cfm64 import CFM64Loader, TextBlockDataset
 
-dataset = BlockDataset(raw_dataset, block_size=1024)
+dataset = TextBlockDataset("train.csv", has_header=True)
 loader = CFM64Loader(dataset, batch_size=64, seed=42)
 
 for epoch in range(100):
@@ -81,6 +81,24 @@ for epoch in range(100):
     for batch in loader:
         train(batch)
 ```
+
+### Tuning the block size to your storage
+
+The block size is the unit of both transfer and shuffle, and its optimum depends
+on the storage device. It defaults to `BLOCK_SIZE_BYTES` (7 MB), but you can
+override it per dataset. Measure the right value **once per machine** with the
+companion [auto-fio](https://github.com/anthony-celeres/auto-fio) tool and pass
+it in — no runtime coupling, fully reproducible:
+
+```python
+import auto_fio
+from cfm64 import TextBlockDataset
+
+bs = auto_fio.optimal_block_size("/data/train")          # bytes, measured once
+dataset = TextBlockDataset("/data/train.csv", block_size_bytes=bs)
+```
+
+Both `TextBlockDataset` and `ImageBlockDataset` accept `block_size_bytes`.
 
 ---
 

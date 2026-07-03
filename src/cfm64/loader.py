@@ -32,7 +32,6 @@ from typing import Any, Iterator
 # NOTE: torch is an *optional* dependency (see pyproject `[project.optional-
 # dependencies]`). It is imported lazily inside iteration so that
 # ``import cfm64`` — and everything except batch collation — works without it.
-from cfm64.constants import BLOCK_SIZE_BYTES
 from cfm64.datasets import BlockDataset
 from cfm64.shuffle import FeistelPermutation, SplitMix64
 
@@ -252,7 +251,7 @@ class CFM64Loader:
             "dataset_size": n,
             "dataset_memory_mb": self.dataset.dataset_memory_size / (1024**2),
             "num_blocks": nb,
-            "block_size_mb": BLOCK_SIZE_BYTES / (1024**2),
+            "block_size_mb": self.dataset.block_size_bytes / (1024**2),
             "seeks_per_epoch": nb,
             "seeks_random_shuffle": n,
             "seek_reduction": n / nb if nb > 0 else 1,
