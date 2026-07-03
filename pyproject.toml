@@ -1,0 +1,84 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cfm64"
+version = "0.1.0"
+description = "CFM64 (Celeres-Feistel Mix 64) — Optimizing Deep Learning Data Loading via Balanced Block-Sequential I/O and Feistel Index Permutation."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Anthony L. Celeres"},
+]
+keywords = [
+    "deep-learning", "data-loading", "shuffling", "feistel",
+    "pytorch", "machine-learning", "io-efficiency",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+hdf5 = ["h5py>=3.0"]
+torch = ["torch>=1.9"]
+image = ["Pillow>=8.0"]
+parquet = ["pyarrow>=6.0"]
+all = ["h5py>=3.0", "torch>=1.9", "Pillow>=8.0", "pyarrow>=6.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.3",
+    "mypy>=1.0",
+    "pybind11>=2.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/CFM64-project/CFM64"
+Documentation = "https://github.com/CFM64-project/CFM64#readme"
+Repository = "https://github.com/CFM64-project/CFM64"
+Issues = "https://github.com/CFM64-project/CFM64/issues"
+
+[tool.scikit-build]
+sdist.exclude = [
+    ".github",
+    "tests/cpp",
+    "build*",
+    "out*",
+]
+wheel.packages = ["src/cfm64"]
+cmake.args = ["-DCFM64_BUILD_PYTHON=ON"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
