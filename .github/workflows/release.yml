@@ -25,8 +25,49 @@ on:
 permissions: {}
 
 jobs:
+  # --- Release gate: the exact test + lint that ci.yml runs (source build +
+  # full suite across all 3 OSes x 3 Pythons). Wheel/sdist builds — and thus
+  # every publish job — are unreachable unless BOTH pass on the released commit,
+  # so a red build can never reach PyPI. Kept in sync with ci.yml by hand.
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.13', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: python -m pip install --upgrade pip
+      - name: Install PyTorch (CPU)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+        continue-on-error: ${{ matrix.python-version == '3.14' }}
+      - name: Build & install cfm64 (native extension)
+        run: pip install ".[dev]"
+      - name: Smoke test — native extension imports
+        run: python -c "import cfm64; from cfm64 import CFM64Shuffle, FeistelPermutation; print('cfm64', cfm64.__version__, 'OK')"
+      - name: Run test suite
+        run: pytest
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install ruff
+      - run: ruff check src tests
+
   build-wheels:
     name: Wheels (${{ matrix.os }})
+    needs: [test, lint]  # gate: no green tests+lint, no wheels, no publish
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +95,7 @@ jobs:
 
   build-sdist:
     name: sdist
+    needs: [test, lint]  # gate: same as build-wheels
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
