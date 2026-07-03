@@ -175,3 +175,13 @@ class TestCFM64LoaderIOStats:
         assert stats["block_size_mb"] == 7.0
         assert stats["seek_reduction"] >= 1
         assert stats["seeks_per_epoch"] == stats["num_blocks"]
+
+    def test_io_stats_reports_dataset_block_size(self, tmp_path):
+        """A non-default block size flows through to the reported stat."""
+        path = tmp_path / "d.txt"
+        with open(path, "w") as f:
+            for i in range(50):
+                f.write(f"{i}\n")
+        ds = TextBlockDataset(str(path), block_size_bytes=2 * 1024 * 1024)
+        loader = CFM64Loader(ds, batch_size=8, seed=0)
+        assert loader.get_io_stats()["block_size_mb"] == 2.0

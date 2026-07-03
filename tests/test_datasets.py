@@ -321,3 +321,89 @@ class TestImageBlockDataset:
         # Every file accessed exactly once
         assert count == len(ds)
         assert len(set(ds.files)) == len(ds)  # no duplicate paths
+
+
+# ---------------------------------------------------------------------------
+# Configurable block size (auto-fio integration)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigurableBlockSize:
+    """Block size is overridable per dataset and defaults to BLOCK_SIZE_BYTES."""
+
+    @staticmethod
+    def _write_lines(path, n: int) -> None:
+        with open(path, "w", newline="") as f:
+            for i in range(n):
+                f.write(f"line_{i}\n")
+
+    @staticmethod
+    def _make_images(root, count: int) -> None:
+        PILImage = pytest.importorskip("PIL.Image")
+        root.mkdir(parents=True, exist_ok=True)
+        for i in range(count):
+            PILImage.new("RGB", (10, 10)).save(root / f"img_{i:04d}.jpg")
+
+    # -- defaults -----------------------------------------------------------
+
+    def test_text_defaults_to_package_constant(self, tmp_path):
+        path = str(tmp_path / "data.txt")
+        self._write_lines(path, 20)
+        ds = TextBlockDataset(path)
+        assert ds.block_size_bytes == BLOCK_SIZE_BYTES
+
+    def test_image_defaults_to_package_constant(self, tmp_path):
+        self._make_images(tmp_path / "s", 5)
+        ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
+        assert ds.block_size_bytes == BLOCK_SIZE_BYTES
+
+    # -- custom value changes blocking --------------------------------------
+
+    def test_text_custom_block_size_is_stored_and_used(self, tmp_path):
+        path = str(tmp_path / "data.txt")
+        self._write_lines(path, 20)
+        default_ds = TextBlockDataset(path)
+        # A 1-byte budget forces every line onto its own block (line-aligned,
+        # minimum one line per block).
+        small_ds = TextBlockDataset(path, block_size_bytes=1)
+        assert small_ds.block_size_bytes == 1
+        assert default_ds.num_blocks == 1
+        assert small_ds.num_blocks == len(small_ds) == 20
+
+    def test_text_custom_block_size_preserves_bijection(self, tmp_path):
+        path = str(tmp_path / "data.txt")
+        self._write_lines(path, 37)
+        ds = TextBlockDataset(path, block_size_bytes=24)  # a few lines per block
+        seen = []
+        for bid in range(ds.num_blocks):
+            block = ds.load_block(bid)
+            for off in range(len(block)):
+                seen.append(ds.get_item(block, off))
+        assert len(seen) == len(ds) == 37  # every line exactly once, in order
+        assert seen == [f"line_{i}\n".encode() for i in range(37)]
+
+    def test_image_custom_block_size_is_stored_and_used(self, tmp_path):
+        self._make_images(tmp_path / "s", 6)
+        default_ds = ImageBlockDataset(str(tmp_path), extensions=[".jpg"])
+        small_ds = ImageBlockDataset(
+            str(tmp_path), extensions=[".jpg"], block_size_bytes=1
+        )
+        assert small_ds.block_size_bytes == 1
+        assert default_ds.num_blocks == 1
+        assert small_ds.num_blocks == len(small_ds) == 6
+
+    # -- validation ---------------------------------------------------------
+
+    @pytest.mark.parametrize("bad", [0, -1, -4096])
+    def test_non_positive_block_size_rejected(self, tmp_path, bad):
+        path = str(tmp_path / "data.txt")
+        self._write_lines(path, 3)
+        with pytest.raises(ValueError, match="must be positive"):
+            TextBlockDataset(path, block_size_bytes=bad)
+
+    @pytest.mark.parametrize("bad", [1.5, "7000000", True])
+    def test_non_int_block_size_rejected(self, tmp_path, bad):
+        path = str(tmp_path / "data.txt")
+        self._write_lines(path, 3)
+        with pytest.raises(TypeError, match="must be an int"):
+            TextBlockDataset(path, block_size_bytes=bad)
