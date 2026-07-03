@@ -1,0 +1,12 @@
+# Keeps GitHub Actions pinned in workflows current (security patches + new
+# major versions). Scoped to actions only: the Python runtime deps use `>=`
+# floors that Dependabot can't meaningfully bump, so a `pip` ecosystem entry
+# would add churn without pinning anything.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
